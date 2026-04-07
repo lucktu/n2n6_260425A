@@ -224,6 +224,9 @@ struct peer_info {
     char                version[8];
     char                os_name[16];
     uint32_t            assigned_ip;
+    time_t              punch_start_time;   /* when hole-punch started, 0=not started */
+    uint8_t             punch_failed;       /* 1=gave up, use supernode relay only */
+    time_t              punch_reset_time;   /* when punch_failed was last reset, for periodic retry */
 };
 
 struct n2n_edge; /* defined in edge.c */

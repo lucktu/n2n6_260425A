@@ -84,6 +84,7 @@ typedef struct tuntap_dev {
 	NET_IFINDEX  ifIdx;
 	NET_LUID luid;
 	OVERLAPPED overlap_read, overlap_write;
+	CRITICAL_SECTION write_lock;
 	bool         dyn_ip4;
 	uint8_t      mac_addr[6];
 	uint32_t     ip_addr;

@@ -53,7 +53,10 @@ enum n2n_pc
     n2n_register_super=5,       /* Register edge to supernode */
     n2n_register_super_ack=6,   /* ACK from supernode to edge */
     n2n_register_super_nak=7,   /* NAK from supernode to edge - registration refused */
-    n2n_federation=8            /* Not used by edge */
+    n2n_federation=8,           /* Not used by edge */
+    n2n_probe=9,                /* P2P hole-punch probe: edge->edge direct */
+    n2n_probe_ack=10,           /* P2P hole-punch result: observed addr via supernode */
+    n2n_peer_info=11            /* Supernode pushes peer address to edge */
 };
 
 typedef enum n2n_pc n2n_pc_t;
@@ -185,6 +188,29 @@ struct n2n_REGISTER_SUPER_NAK
 };
 
 typedef struct n2n_REGISTER_SUPER_NAK n2n_REGISTER_SUPER_NAK_t;
+
+
+/* PROBE: sent directly edge->edge to open NAT mapping and let peer observe src addr */
+struct n2n_PROBE
+{
+    n2n_mac_t           srcMac;     /* sender MAC */
+    n2n_mac_t           dstMac;     /* target MAC */
+};
+typedef struct n2n_PROBE n2n_PROBE_t;
+
+/* PROBE_ACK: sent via supernode, carries the observed public addr of the probe sender */
+struct n2n_PROBE_ACK
+{
+    n2n_mac_t           srcMac;         /* MAC of edge that sent the PROBE */
+    n2n_mac_t           dstMac;         /* MAC of edge that observed the PROBE */
+    n2n_sock_t          observed_addr;  /* public IP:port observed by dstMac */
+};
+typedef struct n2n_PROBE_ACK n2n_PROBE_ACK_t;
+
+size_t encode_PROBE( uint8_t * base, size_t * idx, const n2n_common_t * common, const n2n_PROBE_t * probe );
+size_t decode_PROBE( n2n_PROBE_t * probe, const n2n_common_t * cmn, const uint8_t * base, size_t * rem, size_t * idx );
+size_t encode_PROBE_ACK( uint8_t * base, size_t * idx, const n2n_common_t * common, const n2n_PROBE_ACK_t * ack );
+size_t decode_PROBE_ACK( n2n_PROBE_ACK_t * ack, const n2n_common_t * cmn, const uint8_t * base, size_t * rem, size_t * idx );
 
 
 
@@ -320,5 +346,19 @@ size_t decode_PACKET( n2n_PACKET_t * pkt,
                    size_t * rem,
                    size_t * idx );
 
+/* PEER_INFO: supernode -> edge, push a peer's address */
+typedef struct n2n_PEER_INFO {
+    n2n_mac_t  mac;
+    n2n_sock_t sock;
+} n2n_PEER_INFO_t;
+
+size_t encode_PEER_INFO( uint8_t * base, size_t * idx,
+                         const n2n_common_t * common,
+                         const n2n_PEER_INFO_t * pkt );
+
+size_t decode_PEER_INFO( n2n_PEER_INFO_t * pkt,
+                         const n2n_common_t * cmn,
+                         const uint8_t * base,
+                         size_t * rem, size_t * idx );
 
 #endif /* #if !defined( N2N_WIRE_H_ ) */

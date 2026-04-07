@@ -46,6 +46,11 @@ SOCKET open_socket(uint16_t local_port, int bind_any) {
 
 #ifndef _WIN32
     fcntl(sock_fd, F_SETFL, O_NONBLOCK);
+#else
+    {
+        u_long mode = 1;
+        ioctlsocket(sock_fd, FIONBIO, &mode);
+    }
 #endif
 
     memset(&local_address, 0, sizeof(local_address));
@@ -57,6 +62,10 @@ SOCKET open_socket(uint16_t local_port, int bind_any) {
         traceEvent(TRACE_ERROR, "Bind error [%s]\n", strerror(errno));
         return -1;
     }
+
+#ifndef _WIN32
+    { int tos = 0x10; setsockopt(sock_fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos)); }
+#endif
 
     return sock_fd;
 }

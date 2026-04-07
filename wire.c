@@ -499,3 +499,78 @@ size_t decode_PACKET( n2n_PACKET_t * pkt,
     return retval;
 }
 
+size_t encode_PROBE( uint8_t * base,
+                     size_t * idx,
+                     const n2n_common_t * common,
+                     const n2n_PROBE_t * probe )
+{
+    size_t retval=0;
+    retval += encode_common( base, idx, common );
+    retval += encode_mac( base, idx, probe->srcMac );
+    retval += encode_mac( base, idx, probe->dstMac );
+    return retval;
+}
+
+size_t decode_PROBE( n2n_PROBE_t * probe,
+                     const n2n_common_t * cmn,
+                     const uint8_t * base,
+                     size_t * rem,
+                     size_t * idx )
+{
+    size_t retval=0;
+    memset( probe, 0, sizeof(n2n_PROBE_t) );
+    retval += decode_mac( probe->srcMac, base, rem, idx );
+    retval += decode_mac( probe->dstMac, base, rem, idx );
+    return retval;
+}
+
+size_t encode_PROBE_ACK( uint8_t * base,
+                         size_t * idx,
+                         const n2n_common_t * common,
+                         const n2n_PROBE_ACK_t * ack )
+{
+    size_t retval=0;
+    retval += encode_common( base, idx, common );
+    retval += encode_mac( base, idx, ack->srcMac );
+    retval += encode_mac( base, idx, ack->dstMac );
+    retval += encode_sock( base, idx, &(ack->observed_addr) );
+    return retval;
+}
+
+size_t decode_PROBE_ACK( n2n_PROBE_ACK_t * ack,
+                         const n2n_common_t * cmn,
+                         const uint8_t * base,
+                         size_t * rem,
+                         size_t * idx )
+{
+    size_t retval=0;
+    memset( ack, 0, sizeof(n2n_PROBE_ACK_t) );
+    retval += decode_mac( ack->srcMac, base, rem, idx );
+    retval += decode_mac( ack->dstMac, base, rem, idx );
+    retval += decode_sock( &(ack->observed_addr), base, rem, idx );
+    return retval;
+}
+
+
+size_t encode_PEER_INFO( uint8_t * base, size_t * idx,
+                         const n2n_common_t * common,
+                         const n2n_PEER_INFO_t * pkt )
+{
+    size_t retval = 0;
+    retval += encode_common( base, idx, common );
+    retval += encode_mac( base, idx, pkt->mac );
+    retval += encode_sock( base, idx, &pkt->sock );
+    return retval;
+}
+
+size_t decode_PEER_INFO( n2n_PEER_INFO_t * pkt,
+                         const n2n_common_t * cmn,
+                         const uint8_t * base,
+                         size_t * rem, size_t * idx )
+{
+    size_t retval = 0;
+    memset( pkt, 0, sizeof(*pkt) );
+    retval += decode_mac( pkt->mac, base, rem, idx );
+    retval += decode_sock( &pkt->sock, base, rem, idx );
+    return retval;
+}

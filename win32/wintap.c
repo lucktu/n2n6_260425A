@@ -330,6 +330,8 @@ int tuntap_open(struct tuntap_dev *device, struct tuntap_config* config) {
         return -1;
     }
 
+    InitializeCriticalSection(&device->write_lock);
+
     return 0;
 }
 
@@ -364,7 +366,7 @@ ssize_t tuntap_read(struct tuntap_dev *tuntap, unsigned char *buf, size_t len) {
 ssize_t tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, size_t len) {
     uint32_t write_size;
 
-    //printf("tun_write(len=%d)\n", len);
+    EnterCriticalSection(&tuntap->write_lock);
 
     ResetEvent(tuntap->overlap_write.hEvent);
     if (WriteFile(tuntap->device_handle,
@@ -373,7 +375,7 @@ ssize_t tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, size_t len) 
         &write_size,
         &tuntap->overlap_write))
     {
-        //printf("DONE tun_write(len=%d)\n", write_size);
+        LeaveCriticalSection(&tuntap->write_lock);
         return (ssize_t) write_size;
     }
 
@@ -381,13 +383,14 @@ ssize_t tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, size_t len) 
     case ERROR_IO_PENDING:
         WaitForSingleObject(tuntap->overlap_write.hEvent, INFINITE);
         GetOverlappedResult(tuntap->device_handle, &tuntap->overlap_write, &write_size, FALSE);
+        LeaveCriticalSection(&tuntap->write_lock);
         return (ssize_t) write_size;
-        break;
     default:
         break;
     }
 
-  return -1;
+    LeaveCriticalSection(&tuntap->write_lock);
+    return -1;
 }
 
 /* ************************************************ */

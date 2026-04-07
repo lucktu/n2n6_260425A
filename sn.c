@@ -406,6 +406,9 @@ static int update_edge( n2n_sn_t * sss,
         traceEvent( TRACE_INFO, "update_edge created   %s ==> %s",
                     macaddr_str( mac_buf, edgeMac ),
                     sock_to_cstr( sockbuf, sender_sock ) );
+
+        scan->last_seen = now;
+        return 1;  /* new edge */
     }
     else
     {
@@ -428,6 +431,9 @@ static int update_edge( n2n_sn_t * sss,
             traceEvent( TRACE_INFO, "update_edge updated   %s ==> %s",
                         macaddr_str( mac_buf, edgeMac ),
                         sock_to_cstr( sockbuf, sender_sock ) );
+
+            scan->last_seen = now;
+            return 1;  /* address changed - treat as new for peer push */
         }
         else
         {
@@ -439,7 +445,7 @@ static int update_edge( n2n_sn_t * sss,
     }
 
     scan->last_seen = now;
-    return 0;
+    return 0;  /* unchanged, no push needed */
 }
 
 
@@ -1024,6 +1030,16 @@ static int process_udp( n2n_sn_t * sss,
     {
         traceEvent( TRACE_DEBUG, "Rx REGISTER_ACK (NOT IMPLEMENTED) Should not be via supernode" );
     }
+    else if ( msg_type == n2n_probe_ack )
+    {
+        /* Edge sends PROBE_ACK via supernode to deliver observed addr to the probe sender.
+         * Decode dstMac and forward the raw packet to that edge. */
+        n2n_PROBE_ACK_t ack;
+        decode_PROBE_ACK(&ack, &cmn, udp_buf, &rem, &idx);
+
+        traceEvent(TRACE_DEBUG, "Rx PROBE_ACK: forward to %s", macaddr_str((char[N2N_MACSTR_SIZE]){0}, ack.srcMac));
+        try_forward(sss, &cmn, ack.srcMac, udp_buf, udp_size);
+    }
     else if ( msg_type == MSG_TYPE_REGISTER_SUPER )
     {
         n2n_REGISTER_SUPER_t            reg;
@@ -1085,7 +1101,7 @@ static int process_udp( n2n_sn_t * sss,
         }
         uint8_t use_request_ip = (use_requested_ip != 0 || reg.dev_addr.net_bitlen == 0) ? 1 : 0;
 
-        update_edge( sss, reg.edgeMac, cmn.community, &(ack.sock), now,
+        int is_new_edge = update_edge( sss, reg.edgeMac, cmn.community, &(ack.sock), now,
                      "", "", use_request_ip, htonl(use_requested_ip) );
 
         /* Set assigned IP in ACK */
@@ -1110,6 +1126,39 @@ static int process_udp( n2n_sn_t * sss,
         traceEvent( TRACE_DEBUG, "Tx REGISTER_SUPER_ACK for %s %s",
                     macaddr_str( mac_buf, reg.edgeMac ),
                     sock_to_cstr( sockbuf, &(ack.sock) ) );
+
+        /* Push all existing peers only when this is a NEW edge registration */
+        if ( is_new_edge )
+        {
+            n2n_common_t    pi_cmn;
+            n2n_PEER_INFO_t pi;
+            uint8_t         pibuf[N2N_SN_PKTBUF_SIZE];
+            size_t          pix;
+            struct peer_info *p = sss->edges;
+
+            memset(&pi_cmn, 0, sizeof(pi_cmn));
+            pi_cmn.ttl   = N2N_DEFAULT_TTL;
+            pi_cmn.pc    = n2n_peer_info;
+            pi_cmn.flags = N2N_FLAGS_FROM_SUPERNODE;
+            memcpy(pi_cmn.community, cmn.community, sizeof(n2n_community_t));
+
+            while (p) {
+                if (memcmp(p->community_name, cmn.community, sizeof(n2n_community_t)) == 0 &&
+                    memcmp(p->mac_addr, reg.edgeMac, N2N_MAC_SIZE) != 0)
+                {
+                    memcpy(pi.mac, p->mac_addr, N2N_MAC_SIZE);
+                    pi.sock = p->sock;
+                    pix = 0;
+                    encode_PEER_INFO(pibuf, &pix, &pi_cmn, &pi);
+                    sendto(send_sock, pibuf, pix, 0,
+                           (struct sockaddr *)sender_sock, sock_len);
+                    traceEvent(TRACE_DEBUG, "pushed PEER_INFO %s to new edge %s",
+                               macaddr_str(mac_buf, p->mac_addr),
+                               macaddr_str(mac_buf2, reg.edgeMac));
+                }
+                p = p->next;
+            }
+        }
 
     }
     return 0;

@@ -82,4 +82,3 @@ ssize_t transop_decode_speck( n2n_trans_op_t * ttt, uint8_t * outbuf, size_t out
 void transop_null_init( n2n_trans_op_t * ttt );
 
 #endif /* N2N_TRANSFORMS_H_ */
-

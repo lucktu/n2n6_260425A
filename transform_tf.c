@@ -520,3 +520,4 @@ int transop_twofish_init( n2n_trans_op_t * ttt )
 
     return retval;
 }
+

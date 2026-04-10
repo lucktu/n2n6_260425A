@@ -559,4 +559,3 @@ int transop_aes_init( n2n_trans_op_t * ttt )
 }
 
 #endif /* #if defined(N2N_HAVE_AES) */
-

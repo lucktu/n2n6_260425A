@@ -2242,24 +2242,15 @@ static void readFromMgmtSocket(n2n_edge_t *eee, int *keep_running) {
     /* Send supernode info */
     const char* conn_type = (eee->supernode.family == AF_INET6) ? "IPv6" : "IPv4";
 
-    /* Determine supernode IP support description */
-    char sn_support[32];
-    if (eee->sn_ipv4_support && eee->sn_ipv6_support) {
-        snprintf(sn_support, sizeof(sn_support), "IPv4+IPv6");
-    } else if (eee->sn_ipv4_support) {
-        snprintf(sn_support, sizeof(sn_support), "IPv4 only");
-    } else if (eee->sn_ipv6_support) {
-        snprintf(sn_support, sizeof(sn_support), "IPv6 only");
-    } else {
-        snprintf(sn_support, sizeof(sn_support), "None");
-    }
+    /* Show actual connection type to supernode */
+    const char *sn_support = (eee->supernode.family == AF_INET6) ? "IPv6" : "IPv4";
 
     msg_len = snprintf((char*)udp_buf, N2N_PKT_BUF_SIZE, "Supernodes\n");
     sendto(eee->mgmt_sock, udp_buf, msg_len, 0/*flags*/,
            (struct sockaddr*) &sender_sock, i);
     msg_len = snprintf((char*)udp_buf, N2N_PKT_BUF_SIZE,
                        "  l* |  %s | v%s | %s\n",
-                       sock_to_cstr(sockaddr, &eee->supernode),
+                       eee->sn_ip_array[eee->sn_idx],
                        eee->supernode_version,
                        sn_support);
     sendto(eee->mgmt_sock, udp_buf, msg_len, 0/*flags*/,
@@ -2935,7 +2926,7 @@ static int supernode2addr(n2n_sock_t * sn, int af, const n2n_sn_name_t addrIn) {
 #endif
                 err = -1;
                 if (ip_error != 0) {
-                    traceEvent(TRACE_WARNING, "Failed to parse supernode as a numeric address %s: %s", addr, strerror(ip_error));
+                    traceEvent(TRACE_DEBUG, "Failed to parse supernode as a numeric address %s: %s", addr, strerror(ip_error));
                 }
             }
         } else {

@@ -1607,6 +1607,11 @@ static int process_udp( n2n_sn_t * sss,
         ack.num_sn=0; /* No backup */
         memset( &(ack.sn_bak), 0, sizeof(n2n_sock_t) );
 
+        /* Fill sn_caps so edge knows this supernode's IP stack capabilities */
+        ack.sn_caps = 0;
+        if (sss->ipv4_available) ack.sn_caps |= N2N_SN_CAPS_IPV4;
+        if (sss->ipv6_available) ack.sn_caps |= N2N_SN_CAPS_IPV6;
+
         traceEvent( TRACE_DEBUG, "Rx REGISTER_SUPER for %s %s",
                     macaddr_str( mac_buf, reg.edgeMac ),
                     sock_to_cstr( sockbuf, &(ack.sock) ) );
@@ -1635,13 +1640,13 @@ static int process_udp( n2n_sn_t * sss,
 
         encode_REGISTER_SUPER_ACK( ackbuf, &encx, &cmn2, &ack );
 
-		      /* Select the correct socket based on the address family */
-		      SOCKET send_sock = (sender_sock->sa_family == AF_INET6) ? sss->sock6 : sss->sock;
-	      	socklen_t sock_len = (sender_sock->sa_family == AF_INET6) ?
-                           sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
+        /* Select the correct socket based on the address family */
+        SOCKET send_sock = (sender_sock->sa_family == AF_INET6) ? sss->sock6 : sss->sock;
+        socklen_t sock_len = (sender_sock->sa_family == AF_INET6) ?
+                             sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
 
-	      	sendto( send_sock, ackbuf, encx, 0,
-              	(struct sockaddr *)sender_sock, sock_len );
+        sendto( send_sock, ackbuf, encx, 0,
+                (struct sockaddr *)sender_sock, sock_len );
 
         traceEvent( TRACE_DEBUG, "Tx REGISTER_SUPER_ACK for %s %s",
                     macaddr_str( mac_buf, reg.edgeMac ),
@@ -1701,6 +1706,9 @@ static int process_udp( n2n_sn_t * sss,
                     } else {
                         memset(&pi.sock6, 0, sizeof(n2n_sock_t));
                     }
+                    /* Include version and os_name so edge can display them */
+                    strncpy(pi.version, p->version, sizeof(pi.version) - 1);
+                    strncpy(pi.os_name, p->os_name, sizeof(pi.os_name) - 1);
                     pix = 0;
                     encode_PEER_INFO(pibuf, &pix, &pi_cmn, &pi);
                     sendto(send_sock, pibuf, pix, 0,
@@ -1886,7 +1894,50 @@ int main( int argc, char * const argv[] )
     if (ipv6) {
         sss.sock6 = open_socket6(sss.lport, 1 /*bind ANY*/ );
         if (sss.sock6 != -1) {
-            ipv6_available = 1;
+            /* Socket bound OK, but only mark IPv6 available if the system
+             * has at least one non-link-local, non-loopback global IPv6 address.
+             * A server with only fe80:: addresses cannot accept external IPv6 connections. */
+#ifndef _WIN32
+            struct ifaddrs *ifap = NULL;
+            if (getifaddrs(&ifap) == 0) {
+                struct ifaddrs *ifa;
+                for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+                    if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET6) continue;
+                    struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)ifa->ifa_addr;
+                    if (!IN6_IS_ADDR_LOOPBACK(&s6->sin6_addr) &&
+                        !IN6_IS_ADDR_LINKLOCAL(&s6->sin6_addr)) {
+                        ipv6_available = 1;
+                        break;
+                    }
+                }
+                freeifaddrs(ifap);
+            }
+#else
+            /* Windows: check via GetAdaptersAddresses */
+            ULONG buflen = 15000;
+            IP_ADAPTER_ADDRESSES *addrs = (IP_ADAPTER_ADDRESSES*)malloc(buflen);
+            if (addrs && GetAdaptersAddresses(AF_INET6, 0, NULL, addrs, &buflen) == NO_ERROR) {
+                IP_ADAPTER_ADDRESSES *a;
+                for (a = addrs; a && !ipv6_available; a = a->Next) {
+                    IP_ADAPTER_UNICAST_ADDRESS *ua;
+                    for (ua = a->FirstUnicastAddress; ua; ua = ua->Next) {
+                        struct sockaddr_in6 *s6 = (struct sockaddr_in6*)ua->Address.lpSockaddr;
+                        if (s6->sin6_family == AF_INET6 &&
+                            !IN6_IS_ADDR_LOOPBACK(&s6->sin6_addr) &&
+                            !IN6_IS_ADDR_LINKLOCAL(&s6->sin6_addr)) {
+                            ipv6_available = 1;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (addrs) free(addrs);
+#endif
+            if (!ipv6_available) {
+                traceEvent(TRACE_WARNING, "IPv6 socket bound but no global IPv6 address found - IPv6 disabled");
+                closesocket(sss.sock6);
+                sss.sock6 = -1;
+            }
         } else {
             traceEvent( TRACE_WARNING, "IPv6 socket failed, continuing without IPv6" );
             sss.sock6 = -1;

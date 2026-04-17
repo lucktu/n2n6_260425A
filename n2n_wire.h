@@ -177,6 +177,10 @@ struct n2n_REGISTER_SUPER
 typedef struct n2n_REGISTER_SUPER n2n_REGISTER_SUPER_t;
 
 
+/* Capability flags for n2n_REGISTER_SUPER_ACK.sn_caps */
+#define N2N_SN_CAPS_IPV4   0x01  /* supernode has IPv4 listener */
+#define N2N_SN_CAPS_IPV6   0x02  /* supernode has IPv6 listener */
+
 /* Linked with n2n_register_super_ack in n2n_pc_t. Only from supernode to edge. */
 struct n2n_REGISTER_SUPER_ACK
 {
@@ -188,6 +192,10 @@ struct n2n_REGISTER_SUPER_ACK
 
     uint8_t             num_sn;         /* Number of backup supernodes */
     n2n_sock_t          sn_bak;         /* Socket of the first backup supernode */
+
+    /* Appended after sn_bak for forward/backward compatibility.
+     * Old edges ignore extra bytes; old supernodes leave sn_caps=0 (unknown). */
+    uint8_t             sn_caps;        /* N2N_SN_CAPS_* bitmask: supernode IP capability */
 };
 
 typedef struct n2n_REGISTER_SUPER_ACK n2n_REGISTER_SUPER_ACK_t;
@@ -376,6 +384,8 @@ typedef struct n2n_PEER_INFO {
     n2n_mac_t  mac;
     n2n_sock_t sockets[2];  /* [0]=public IPv4, [1]=LAN (if aflags set) */
     n2n_sock_t sock6;       /* IPv6 public address (if N2N_AFLAGS_IPV6_SOCKET set) */
+    char       version[8];  /* peer edge version string (optional, may be empty) */
+    char       os_name[16]; /* peer OS name (optional, may be empty) */
 } n2n_PEER_INFO_t;
 
 size_t encode_PEER_INFO( uint8_t * base, size_t * idx,

@@ -721,7 +721,8 @@ static int upnp_discover(void)
 }
 
 /* Check if an external port is already mapped by someone else.
- * Returns UPNP_OK if port is FREE, UPNP_ERR_RESPONSE if occupied, other on error. */
+ * Returns UPNP_OK if port is FREE or already mapped to this host,
+ * UPNP_ERR_RESPONSE if occupied by another host, other on error. */
 static int upnp_igd_check_port(uint16_t external_port, const char *svc_type)
 {
     char args[256];
@@ -767,9 +768,33 @@ static int upnp_igd_check_port(uint16_t external_port, const char *svc_type)
 
     if (strncmp(resp, "HTTP/1.", 7) != 0) return UPNP_ERR_RESPONSE;
     int code = atoi(resp + 9);
-    /* 200 = mapping exists (port occupied); 500 with NoSuchEntryInArray = free */
-    if (code == 200) return UPNP_ERR_RESPONSE; /* occupied */
-    return UPNP_OK; /* 500/fault = no such entry = port is free */
+
+    if (code != 200)
+        return UPNP_OK; /* 500/fault = no such entry = port is free */
+
+    /* Port is mapped: check if it's mapped to this host - if so, treat as free
+     * (we can overwrite our own mapping without conflict). */
+    char local_ip[INET_ADDRSTRLEN] = "0.0.0.0";
+    get_local_ip(local_ip, sizeof(local_ip));
+
+    /* Extract NewInternalClient from response body */
+    const char *tag = "NewInternalClient>";
+    const char *p = strstr(resp, tag);
+    if (p) {
+        p += strlen(tag);
+        const char *end = strchr(p, '<');
+        if (end) {
+            char mapped_ip[INET_ADDRSTRLEN] = {0};
+            size_t len = (size_t)(end - p);
+            if (len >= sizeof(mapped_ip)) len = sizeof(mapped_ip) - 1;
+            memcpy(mapped_ip, p, len);
+            mapped_ip[len] = '\0';
+            if (strcmp(mapped_ip, local_ip) == 0)
+                return UPNP_OK; /* already mapped to us - reuse */
+        }
+    }
+
+    return UPNP_ERR_RESPONSE; /* occupied by another host */
 }
 
 /* del=0: AddPortMapping with conflict detection; del=1: DeletePortMapping */

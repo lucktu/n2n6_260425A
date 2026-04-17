@@ -239,6 +239,7 @@ struct peer_info {
     time_t              last_query_sent;   /* time last query_peer was sent, for rate-limiting */
     time_t              last_punch_probe;  /* time last PROBE was sent during hole-punch */
     uint8_t             punch_retry_count; /* number of punch retries, remove after max */
+    uint8_t             first_seen;        /* 1 = first real packet logged (P2P or relay) */
 };
 
 struct n2n_edge; /* defined in edge.c */

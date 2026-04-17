@@ -429,6 +429,9 @@ size_t encode_REGISTER_SUPER_ACK( uint8_t * base,
     {
         retval += encode_sock( base, idx, &(reg->sn_bak) );
     }
+    /* Append sn_caps after existing fields for backward compatibility.
+     * Old edges will simply ignore this extra byte. */
+    retval += encode_uint8( base, idx, reg->sn_caps );
     return retval;
 }
 
@@ -456,6 +459,13 @@ size_t decode_REGISTER_SUPER_ACK( n2n_REGISTER_SUPER_ACK_t * reg,
     {
         /* We only support 0 or 1 at this stage */
         retval += decode_sock( &(reg->sn_bak), base, rem, idx );
+    }
+
+    /* sn_caps: optional byte appended by new supernodes for backward compat.
+     * If not present (old supernode), sn_caps stays 0 (unknown). */
+    if ( *rem >= 1 )
+    {
+        retval += decode_uint8( &(reg->sn_caps), base, rem, idx );
     }
 
     return retval;
@@ -597,6 +607,9 @@ size_t encode_PEER_INFO( uint8_t * base, size_t * idx,
         retval += encode_sock( base, idx, &pkt->sockets[1] );
     if ( pkt->aflags & N2N_AFLAGS_IPV6_SOCKET )
         retval += encode_sock( base, idx, &pkt->sock6 );
+    /* Append version and os_name for backward compat; old edges ignore extra bytes */
+    retval += encode_buf( base, idx, pkt->version, sizeof(pkt->version) );
+    retval += encode_buf( base, idx, pkt->os_name, sizeof(pkt->os_name) );
     return retval;
 }
 
@@ -614,6 +627,11 @@ size_t decode_PEER_INFO( n2n_PEER_INFO_t * pkt,
         retval += decode_sock( &pkt->sockets[1], base, rem, idx );
     if ( (pkt->aflags & N2N_AFLAGS_IPV6_SOCKET) && *rem >= 8 )
         retval += decode_sock( &pkt->sock6, base, rem, idx );
+    /* version and os_name: optional, appended by new supernodes */
+    if ( *rem >= sizeof(pkt->version) )
+        retval += decode_buf( pkt->version, sizeof(pkt->version), base, rem, idx );
+    if ( *rem >= sizeof(pkt->os_name) )
+        retval += decode_buf( pkt->os_name, sizeof(pkt->os_name), base, rem, idx );
     return retval;
 }
 

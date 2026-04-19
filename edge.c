@@ -634,9 +634,12 @@ static ssize_t sendto_sock( SOCKET fd, const void * buf, size_t len, const n2n_s
     {
 #ifdef _WIN32
         int error = WSAGetLastError();
-        /* 10014 = WSAEFAULT: IPv6 socket sending to IPv4 address - silent */
-        /* 10047 = WSAEAFNOSUPPORT: IPv4 socket sending to IPv6 address - silent */
-        if ( error != 10014 && error != 10047 ) {
+        /* Silently ignore address-family mismatch errors - these happen normally
+         * in dual-stack mode when an IPv4 socket tries to send to an IPv6 address
+         * or vice versa. */
+        if ( error != 10014 &&   /* WSAEFAULT */
+             error != 10047 &&   /* WSAEAFNOSUPPORT */
+             error != 10022 ) {  /* WSAEINVAL */
             W32_ERROR(error, c)
             traceEvent( TRACE_ERROR, "sendto failed (%d) %ls", error, c );
             W32_ERROR_FREE(c)
@@ -697,7 +700,7 @@ static void send_register( n2n_edge_t * eee,
     idx=0;
     encode_REGISTER( pktbuf, &idx, &cmn, &reg );
 
-    traceEvent( TRACE_INFO, "send REGISTER %s",
+    traceEvent( TRACE_DEBUG, "send REGISTER %s",
         sock_to_cstr( sockbuf, remote_peer ) );
 
     sendto_sock( sock_for_dest(eee, remote_peer), pktbuf, idx, remote_peer );
@@ -822,7 +825,7 @@ static void send_register_super( n2n_edge_t * eee,
     idx=0;
     encode_REGISTER_SUPER( pktbuf, &idx, &cmn, &reg );
 
-    traceEvent( TRACE_INFO, "send REGISTER_SUPER to %s",
+    traceEvent( TRACE_DEBUG, "send REGISTER_SUPER to %s",
         sock_to_cstr( sockbuf, supernode ) );
 
     sendto_sock( sock_for_dest(eee, supernode), pktbuf, idx, supernode );
@@ -831,7 +834,7 @@ static void send_register_super( n2n_edge_t * eee,
     if (eee->supernode_alt.family != 0) {
         SOCKET alt_sock = (eee->supernode_alt.family == AF_INET6) ? eee->udp_sock6 : eee->udp_sock;
         if (alt_sock != -1) {
-            traceEvent(TRACE_INFO, "send REGISTER_SUPER (alt) to %s",
+            traceEvent(TRACE_DEBUG, "send REGISTER_SUPER (alt) to %s",
                        sock_to_cstr(sockbuf, &eee->supernode_alt));
             sendto_sock(alt_sock, pktbuf, idx, &eee->supernode_alt);
         }
@@ -864,7 +867,7 @@ static void send_register_ack( n2n_edge_t * eee,
     idx=0;
     encode_REGISTER_ACK( pktbuf, &idx, &cmn, &ack );
 
-    traceEvent( TRACE_INFO, "send REGISTER_ACK %s",
+    traceEvent( TRACE_DEBUG, "send REGISTER_ACK %s",
         sock_to_cstr( sockbuf, remote_peer ) );
 
 
@@ -940,7 +943,7 @@ static void send_probe( n2n_edge_t * eee, const n2n_sock_t * peer_sock, const n2
 
     encode_PROBE(pktbuf, &idx, &cmn, &probe);
 
-    traceEvent(TRACE_INFO, "send PROBE to %s", sock_to_cstr(sockbuf, peer_sock));
+    traceEvent(TRACE_DEBUG, "send PROBE to %s", sock_to_cstr(sockbuf, peer_sock));
     sendto_sock(sock_for_dest(eee, peer_sock), pktbuf, idx, peer_sock);
 }
 
@@ -1433,7 +1436,7 @@ void set_peer_operational( n2n_edge_t * eee,
     macstr_t mac_buf;
     n2n_sock_str_t sockbuf;
 
-    traceEvent( TRACE_INFO, "set_peer_operational: %s -> %s",
+    traceEvent( TRACE_DEBUG, "set_peer_operational: %s -> %s",
                 macaddr_str( mac_buf, mac),
                 sock_to_cstr( sockbuf, peer ) );
 
@@ -2389,7 +2392,7 @@ static void readFromIPSocket( n2n_edge_t * eee, SOCKET fd )
      * hop as sender. */
     orig_sender=&sender;
 
-    traceEvent(TRACE_INFO, "### Rx N2N UDP (%d) from %s",
+    traceEvent(TRACE_DEBUG, "### Rx N2N UDP (%d) from %s",
                (signed int) recvlen, sock_to_cstr(sockbuf1, &sender) );
 
     /* hexdump( udp_buf, recvlen ); */
@@ -2421,7 +2424,7 @@ static void readFromIPSocket( n2n_edge_t * eee, SOCKET fd )
                 orig_sender = &(pkt.sock);
             }
 
-            traceEvent(TRACE_INFO, "Rx PACKET from %s (%s)",
+            traceEvent(TRACE_DEBUG, "Rx PACKET from %s (%s)",
                        sock_to_cstr(sockbuf1, &sender),
                        sock_to_cstr(sockbuf2, orig_sender) );
 
@@ -2442,7 +2445,7 @@ static void readFromIPSocket( n2n_edge_t * eee, SOCKET fd )
                 orig_sender = &(reg.sock);
             }
 
-            traceEvent(TRACE_INFO, "Rx REGISTER src=%s dst=%s from peer %s (%s)",
+            traceEvent(TRACE_DEBUG, "Rx REGISTER src=%s dst=%s from peer %s (%s)",
                        macaddr_str( mac_buf1, reg.srcMac ),
                        macaddr_str( mac_buf2, reg.dstMac ),
                        sock_to_cstr(sockbuf1, &sender),

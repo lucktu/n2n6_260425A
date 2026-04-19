@@ -217,28 +217,34 @@ typedef char ipstr_t[INET6_ADDRSTRLEN];
 #define N2N_MACSTR_SIZE 32
 typedef char macstr_t[N2N_MACSTR_SIZE];
 
+/* Hole-punch phases: tried in order, skipping unavailable ones */
+#define PUNCH_PHASE_LAN   0   /* LAN direct (same public IP) */
+#define PUNCH_PHASE_IPV6  1   /* IPv6 WAN punch */
+#define PUNCH_PHASE_IPV4  2   /* IPv4 WAN punch */
+#define PUNCH_PHASE_DONE  3   /* all phases exhausted -> relay */
+
+#define PUNCH_PHASE_TIMEOUT  10  /* seconds per phase before advancing */
+
 struct peer_info {
     struct peer_info *  next;
     n2n_community_t     community_name;
     n2n_mac_t           mac_addr;
-    n2n_sock_t          sock;              /* primary (public) address */
+    n2n_sock_t          sock;              /* IPv4 public address (family=0 if unavailable) */
     n2n_sock_t          sock6;             /* IPv6 public address (family=0 if unavailable) */
-    int                 num_sockets;       /* 1=public only, 2=public+LAN */
-    n2n_sock_t          sockets[2];        /* [0]=public, [1]=LAN */
+    n2n_sock_t          sock_lan;          /* LAN address (family=0 if unavailable) */
     time_t              last_seen;
     char                version[8];
     char                os_name[16];
     uint32_t            assigned_ip;
-    time_t              punch_start_time;
-    uint8_t             punch_failed;
-    time_t              punch_reset_time;
-    time_t              lan_punch_start;   /* when LAN punch started, 0=not started */
-    uint8_t             lan_punch_done;    /* 1=LAN succeeded or timed out, proceed to WAN */
+    time_t              punch_start_time;  /* when current phase started */
+    uint8_t             punch_phase;       /* current PUNCH_PHASE_* */
+    uint8_t             punch_failed;      /* 1 = all phases done, using relay */
+    time_t              punch_reset_time;  /* when punch_failed was set, for retry */
     time_t              last_probe_sent;   /* time last keepalive PROBE was sent */
     uint8_t             keepalive_fails;   /* consecutive keepalive failures */
     time_t              last_query_sent;   /* time last query_peer was sent, for rate-limiting */
     time_t              last_punch_probe;  /* time last PROBE was sent during hole-punch */
-    uint8_t             punch_retry_count; /* number of punch retries, remove after max */
+    uint8_t             punch_retry_count; /* number of full-cycle retries */
     uint8_t             first_seen;        /* 1 = first real packet logged (P2P or relay) */
 };
 

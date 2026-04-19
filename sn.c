@@ -726,10 +726,9 @@ static int update_edge( n2n_sn_t * sss,
         scan->next = sss->edges;
         sss->edges = scan;
 
-        scan->num_sockets  = local_sock_ena ? 2 : 1;
-        scan->sockets[0]   = scan->sock;
+        scan->sock     = *sender_sock;  /* IPv4 public (or IPv6 if that's what came in) */
         if (local_sock_ena && local_sock)
-            scan->sockets[1] = *local_sock;
+            scan->sock_lan = *local_sock;
 
         {
             struct in_addr vip_addr;
@@ -737,8 +736,8 @@ static int update_edge( n2n_sn_t * sss,
             traceEvent( TRACE_NORMAL, "update_edge created   %s vip=%s ==> %s%s",
                         macaddr_str( mac_buf, edgeMac ),
                         inet_ntoa(vip_addr),
-                        sock_to_cstr( sockbuf, &scan->sockets[0] ),
-                        scan->num_sockets > 1 ? " (LAN)" : "" );
+                        sock_to_cstr( sockbuf, &scan->sock ),
+                        (scan->sock_lan.family != 0) ? " (LAN)" : "" );
         }
 
         scan->last_seen = now;
@@ -786,12 +785,9 @@ static int update_edge( n2n_sn_t * sss,
                         sock_to_cstr( sockbuf, sender_sock ) );
 
             if (local_sock_ena && local_sock) {
-                scan->num_sockets  = 2;
-                scan->sockets[0]   = scan->sock;
-                scan->sockets[1]   = *local_sock;
+                scan->sock_lan = *local_sock;
             } else {
-                scan->num_sockets  = 1;
-                scan->sockets[0]   = scan->sock;
+                memset(&scan->sock_lan, 0, sizeof(n2n_sock_t));
             }
 
             scan->last_seen = now;
@@ -1503,12 +1499,11 @@ static int process_udp( n2n_sn_t * sss,
             memcpy( cmn2.community, cmn.community, sizeof(n2n_community_t) );
 
             memcpy( pi.mac, query.targetMac, N2N_MAC_SIZE );
-            pi.aflags = (target->num_sockets > 1 &&
-                         target->sockets[1].family != 0 &&
-                         target->sockets[1].port != 0) ? N2N_AFLAGS_LOCAL_SOCKET : 0;
-            pi.sockets[0] = target->sockets[0];
+            pi.aflags = (target->sock_lan.family != 0 &&
+                         target->sock_lan.port != 0) ? N2N_AFLAGS_LOCAL_SOCKET : 0;
+            pi.sockets[0] = target->sock;
             if (pi.aflags & N2N_AFLAGS_LOCAL_SOCKET)
-                pi.sockets[1] = target->sockets[1];
+                pi.sockets[1] = target->sock_lan;
             if (target->sock6.family == AF_INET6) {
                 pi.aflags |= N2N_AFLAGS_IPV6_SOCKET;
                 pi.sock6 = target->sock6;
@@ -1539,18 +1534,17 @@ static int process_udp( n2n_sn_t * sss,
                 memcpy( cmn3.community, cmn.community, sizeof(n2n_community_t) );
 
                 memcpy( pi2.mac, query.srcMac, N2N_MAC_SIZE );
-                pi2.aflags = (requester->num_sockets > 1 &&
-                              requester->sockets[1].family != 0 &&
-                              requester->sockets[1].port != 0) ? N2N_AFLAGS_LOCAL_SOCKET : 0;
-                pi2.sockets[0] = requester->sockets[0];
+                pi2.aflags = (requester->sock_lan.family != 0 &&
+                              requester->sock_lan.port != 0) ? N2N_AFLAGS_LOCAL_SOCKET : 0;
+                pi2.sockets[0] = requester->sock;
                 if (pi2.aflags & N2N_AFLAGS_LOCAL_SOCKET)
-                    pi2.sockets[1] = requester->sockets[1];
+                    pi2.sockets[1] = requester->sock_lan;
 
                 encode_PEER_INFO( encbuf2, &encx2, &cmn3, &pi2 );
                 /* Send to B via appropriate socket */
-                if ( fill_sockaddr((struct sockaddr*)&b_addr, b_len, &target->sockets[0]) == 0 ) {
-                    SOCKET send_sock2 = (target->sockets[0].family == AF_INET6) ? sss->sock6 : sss->sock;
-                    socklen_t slen2 = (target->sockets[0].family == AF_INET6) ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
+                if ( fill_sockaddr((struct sockaddr*)&b_addr, b_len, &target->sock) == 0 ) {
+                    SOCKET send_sock2 = (target->sock.family == AF_INET6) ? sss->sock6 : sss->sock;
+                    socklen_t slen2 = (target->sock.family == AF_INET6) ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
                     sendto( send_sock2, encbuf2, encx2, 0, (struct sockaddr*)&b_addr, slen2 );
                     traceEvent(TRACE_DEBUG, "Simultaneous open: pushed A's addr to B for %s",
                                macaddr_str(mac_buf, query.targetMac));
@@ -1689,13 +1683,11 @@ static int process_udp( n2n_sn_t * sss,
                     memcmp(p->mac_addr, reg.edgeMac, N2N_MAC_SIZE) != 0)
                 {
                     memcpy(pi.mac, p->mac_addr, N2N_MAC_SIZE);
-                    pi.sockets[0] = p->sockets[0];
-                    if (p->num_sockets > 1 &&
-                        p->sockets[1].family != 0 &&
-                        p->sockets[1].port != 0)
+                    pi.sockets[0] = p->sock;
+                    if (p->sock_lan.family != 0 && p->sock_lan.port != 0)
                     {
                         pi.aflags = N2N_AFLAGS_LOCAL_SOCKET;
-                        pi.sockets[1] = p->sockets[1];
+                        pi.sockets[1] = p->sock_lan;
                     } else {
                         pi.aflags = 0;
                     }

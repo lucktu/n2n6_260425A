@@ -1059,7 +1059,8 @@ static void send_probe( n2n_edge_t * eee, const n2n_sock_t * peer_sock, const n2
     sendto_sock(sock_for_dest(eee, peer_sock), pktbuf, idx, peer_sock);
 }
 
-/** Send PROBE_ACK via supernode: tell srcMac what addr we observed from their PROBE */
+/** Send PROBE_ACK directly to the observed address so keepalive
+ *  works even when the supernode is unreachable. */
 static void send_probe_ack( n2n_edge_t * eee,
                             const n2n_mac_t srcMac,
                             const n2n_sock_t * observed_addr )
@@ -1072,7 +1073,7 @@ static void send_probe_ack( n2n_edge_t * eee,
     memset(&cmn, 0, sizeof(cmn));
     cmn.ttl = N2N_DEFAULT_TTL;
     cmn.pc = n2n_probe_ack;
-    cmn.flags = N2N_FLAGS_FROM_SUPERNODE; /* route via supernode */
+    cmn.flags = 0;
     memcpy(cmn.community, eee->community_name, N2N_COMMUNITY_SIZE);
 
     memcpy(ack.srcMac, srcMac, N2N_MAC_SIZE);          /* who sent the probe */
@@ -1083,10 +1084,12 @@ static void send_probe_ack( n2n_edge_t * eee,
 
     {
         MACSTR_TMP(mac_tmp);
-        traceEvent(TRACE_INFO, "send PROBE_ACK via supernode for %s",
+        n2n_sock_str_t sockbuf1;
+        traceEvent(TRACE_INFO, "send PROBE_ACK direct to %s for %s",
+                   sock_to_cstr(sockbuf1, observed_addr),
                    macaddr_str(mac_tmp, srcMac));
     }
-    sendto_sock(sock_for_dest(eee, &eee->supernode), pktbuf, idx, &eee->supernode);
+    sendto_sock(sock_for_dest(eee, observed_addr), pktbuf, idx, observed_addr);
 }
 
 static int is_empty_ip_address( const n2n_sock_t * sock );
@@ -1349,11 +1352,14 @@ static void check_keepalive( n2n_edge_t * eee, time_t now )
     struct peer_info *prev = NULL;
     MACSTR_TMP(mac_tmp);
 
-    time_t threshold = now - eee->register_lifetime;
+    time_t threshold = now - KEEPALIVE_IDLE_SECONDS;
     int active_comm = (eee->last_p2p > threshold) ||
                       (eee->last_sup > threshold);
 
     if (active_comm)
+        return;
+
+    if (eee->last_sup > eee->last_p2p)
         return;
 
     while ( scan ) {

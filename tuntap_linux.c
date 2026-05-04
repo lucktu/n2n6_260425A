@@ -439,6 +439,13 @@ int tuntap_open(tuntap_dev *device, struct tuntap_config* config) {
 
     read_mac(device->dev_name, device->mac_addr);
 
+    if (device->ip_addr != 0 && !config->dyn_ip4) {
+        struct in_addr a;
+        a.s_addr = device->ip_addr;
+        traceEvent(TRACE_NORMAL, "Interface %s configured with IP %s/%u",
+                   device->dev_name, inet_ntoa(a), device->ip_prefixlen);
+    }
+
     if ( set_ipaddress(device, !config->dyn_ip4) < 0 ) {
         traceEvent(TRACE_ERROR, "Could not setup up interface %s", device->dev_name);
         close(device->fd);
